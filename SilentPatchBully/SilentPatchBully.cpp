@@ -1,10 +1,10 @@
-#define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 
-#define WINVER 0x0502
-#define _WIN32_WINNT 0x0502
-
+#define _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING
+#include <sdkddkver.h>
 #include <windows.h>
+
+#include <Xinput.h>
 #include "Utils/MemoryMgr.h"
 #include "PoolsBully.h"
 
@@ -438,6 +438,56 @@ namespace SEALeaksFix
 	}
 };
 
+DWORD WINAPI MyThreadFunction(LPVOID lpParam) {
+	UNREFERENCED_PARAMETER(lpParam);
+
+	XINPUT_STATE xstate = { 0 };
+	bool CordHeld = false;
+	//int fps_cap = 60;
+	while (true)
+	{
+		if (XInputGetState(0, &xstate) == ERROR_SUCCESS)
+		{
+			if (xstate.Gamepad.wButtons & XINPUT_GAMEPAD_BACK &&
+				xstate.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN &&
+				!CordHeld)
+			{
+				wchar_t			wcModulePath[MAX_PATH];
+				GetModuleFileNameW(hDLLModule, wcModulePath, _countof(wcModulePath) - 3); // Minus max required space for extension
+				PathRenameExtensionW(wcModulePath, L".ini");
+
+				if (const int INIoption = GetPrivateProfileIntW(L"SilentPatch", L"FPSLimit", -1, wcModulePath); INIoption != -1)
+				{
+					if (INIoption == 60)
+					{
+						if (WritePrivateProfileStringW(L"SilentPatch", L"FPSLimit", L"30", wcModulePath))
+						{
+							ShellExecuteW(0, L"open", L"C:\\Program Files (x86)\\Steam\\steamapps\\common\\Bully Scholarship Edition\\Bully.exe", NULL, NULL, 1);
+							ExitProcess(0);
+						}
+					}
+					if (INIoption == 30)
+					{
+						if (WritePrivateProfileStringW(L"SilentPatch", L"FPSLimit", L"60", wcModulePath))
+						{
+							ShellExecuteW(0, L"open", L"C:\\Program Files (x86)\\Steam\\steamapps\\common\\Bully Scholarship Edition\\Bully.exe", NULL, NULL, 1);
+							ExitProcess(0);
+						}
+					}
+
+				}
+
+				CordHeld = true;
+			}
+			else if (!(xstate.Gamepad.wButtons & XINPUT_GAMEPAD_BACK) ||
+				!(xstate.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN))
+			{
+				CordHeld = false;
+			}
+		}
+	}
+	return 0; // Return value of the thread
+}
 
 void InjectHooks()
 {
@@ -459,6 +509,7 @@ void InjectHooks()
 
 	// Obtain a path to the ASI
 	wchar_t			wcModulePath[MAX_PATH];
+	LPCWSTR keyPath = L"Software\\Rockstar Games\\Bully Scholarship Edition\\A0"; // Path to the key
 	GetModuleFileNameW(hDLLModule, wcModulePath, _countof(wcModulePath) - 3); // Minus max required space for extension
 	PathRenameExtensionW(wcModulePath, L".ini");
 
@@ -519,6 +570,44 @@ void InjectHooks()
 			Patch<int32_t>( 0x40618F + 1, INIoption > 0 ? INIoption : INT_MAX );
 		}
 
+		if (const int INIoption = GetPrivateProfileIntW(L"SilentPatch", L"ResolutionWidth", -1, wcModulePath); INIoption != -1)
+		{
+			LPCWSTR valueNameResW = L"RESW";          // Name of the value
+			RegSetKeyValueW(
+				HKEY_CURRENT_USER, // Root key handle
+				keyPath,           // Subkey path
+				valueNameResW,         // Value name
+				REG_DWORD,         // Value type
+				&INIoption,        // Pointer to the data
+				sizeof(INIoption)  // Size of the data in bytes
+			);
+		}
+
+		if (const int INIoption = GetPrivateProfileIntW(L"SilentPatch", L"ResolutionHeight", -1, wcModulePath); INIoption != -1)
+		{
+			LPCWSTR valueNameResH = L"RESH";          // Name of the value
+			RegSetKeyValueW(
+				HKEY_CURRENT_USER, // Root key handle
+				keyPath,           // Subkey path
+				valueNameResH,         // Value name
+				REG_DWORD,         // Value type
+				&INIoption,        // Pointer to the data
+				sizeof(INIoption)  // Size of the data in bytes
+			);
+		}
+
+		if (const int INIoption = GetPrivateProfileIntW(L"SilentPatch", L"ShadowLevel", -1, wcModulePath); INIoption != -1)
+		{
+			LPCWSTR valueNameShadow = L"VS";          // Name of the value
+			RegSetKeyValueW(
+				HKEY_CURRENT_USER, // Root key handle
+				keyPath,           // Subkey path
+				valueNameShadow,         // Value name
+				REG_DWORD,         // Value type
+				&INIoption,        // Pointer to the data
+				sizeof(INIoption)  // Size of the data in bytes
+			);
+		}
 		// Revert code changes 60FPS EXE does, we don't need them anymore
 		Patch<int8_t>( 0x4061BE + 1, 0x4 );
 		Patch<uint8_t>( 0x4061C2, 0x73 );
@@ -953,6 +1042,22 @@ void InjectHooks()
 		Patch<int8_t>( 0x5A99AF, 1 );
 		ReadCall( 0x5A9A1F, MDXactCreateSoundBankCommand );
 		InjectHook( 0x5A9A1F, MDXactCreateSoundBankWithManagedDataCommand );
+	}
+	HANDLE hThread;      // Handle to the newly created thread
+	DWORD dwThreadId;    // ID of the newly created thread
+
+	// Create a new thread that will execute MyThreadFunction.
+	hThread = CreateThread(
+		nullptr,             // Default security attributes (can be NULL)
+		0,                   // Default stack size (0 means use default size)
+		MyThreadFunction,    // Pointer to the thread function
+		nullptr,             // Parameter to pass to the thread function (can be NULL)
+		0,                   // Default creation flags (0 means run immediately)
+		&dwThreadId          // Pointer to a DWORD to receive the thread ID
+	);
+	if (hThread)
+	{
+		CloseHandle(hThread);
 	}
 }
 
