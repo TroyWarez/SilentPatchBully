@@ -440,10 +440,6 @@ namespace SEALeaksFix
 };
 
 DWORD WINAPI XInputThread(LPVOID lpParam) {
-	while (!IsDebuggerPresent())
-	{
-		Sleep(1);
-	}
 
 	int32_t* fps_cap = (int32_t*)0x406190;
 	XINPUT_STATE xstate = { 0 };
