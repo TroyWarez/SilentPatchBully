@@ -3,6 +3,7 @@
 #define _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING
 #include <sdkddkver.h>
 #include <windows.h>
+#include <debugapi.h>
 
 #include <Xinput.h>
 #include "Utils/MemoryMgr.h"
@@ -438,12 +439,15 @@ namespace SEALeaksFix
 	}
 };
 
-DWORD WINAPI MyThreadFunction(LPVOID lpParam) {
-	UNREFERENCED_PARAMETER(lpParam);
+DWORD WINAPI XInputThread(LPVOID lpParam) {
+	while (!IsDebuggerPresent())
+	{
+		Sleep(1);
+	}
 
+	int32_t* fps_cap = (int32_t*)0x406190;
 	XINPUT_STATE xstate = { 0 };
 	bool CordHeld = false;
-	//int fps_cap = 60;
 	while (true)
 	{
 		if (XInputGetState(0, &xstate) == ERROR_SUCCESS)
@@ -462,16 +466,24 @@ DWORD WINAPI MyThreadFunction(LPVOID lpParam) {
 					{
 						if (WritePrivateProfileStringW(L"SilentPatch", L"FPSLimit", L"30", wcModulePath))
 						{
-							ShellExecuteW(0, L"open", L"C:\\Program Files (x86)\\Steam\\steamapps\\common\\Bully Scholarship Edition\\Bully.exe", NULL, NULL, 1);
-							ExitProcess(0);
+							DWORD dwOldProtect;
+							if (VirtualProtect(fps_cap, sizeof(int32_t), PAGE_EXECUTE_READWRITE, &dwOldProtect))
+							{
+								*(fps_cap) = 30;
+								VirtualProtect(fps_cap, sizeof(int32_t), dwOldProtect, &dwOldProtect);
+							}
 						}
 					}
 					if (INIoption == 30)
 					{
 						if (WritePrivateProfileStringW(L"SilentPatch", L"FPSLimit", L"60", wcModulePath))
 						{
-							ShellExecuteW(0, L"open", L"C:\\Program Files (x86)\\Steam\\steamapps\\common\\Bully Scholarship Edition\\Bully.exe", NULL, NULL, 1);
-							ExitProcess(0);
+							DWORD dwOldProtect;
+							if (VirtualProtect(fps_cap, sizeof(int32_t), PAGE_EXECUTE_READWRITE, &dwOldProtect))
+							{
+								*(fps_cap) = 60;
+								VirtualProtect(fps_cap, sizeof(int32_t), dwOldProtect, &dwOldProtect);
+							}
 						}
 					}
 
@@ -1046,12 +1058,12 @@ void InjectHooks()
 	HANDLE hThread;      // Handle to the newly created thread
 	DWORD dwThreadId;    // ID of the newly created thread
 
-	// Create a new thread that will execute MyThreadFunction.
+	// Create a new thread that will execute XInputThread.
 	hThread = CreateThread(
 		nullptr,             // Default security attributes (can be NULL)
 		0,                   // Default stack size (0 means use default size)
-		MyThreadFunction,    // Pointer to the thread function
-		nullptr,             // Parameter to pass to the thread function (can be NULL)
+		XInputThread,    // Pointer to the thread function
+		NULL,//(LPVOID)(*(int32_t *)0x40618F + 1),             // Parameter to pass to the thread function (can be NULL)
 		0,                   // Default creation flags (0 means run immediately)
 		&dwThreadId          // Pointer to a DWORD to receive the thread ID
 	);
@@ -1150,6 +1162,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 
 	if ( fdwReason == DLL_PROCESS_ATTACH )
 	{
+
 		hDLLModule = hinstDLL;
 	}
 	return TRUE;
