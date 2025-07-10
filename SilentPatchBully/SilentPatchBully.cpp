@@ -6,6 +6,14 @@
 #include <debugapi.h>
 
 #include <Xinput.h>
+#undef XINPUT_DLL_A
+#undef XINPUT_DLL_W
+#undef XINPUT_DLL
+
+#define XINPUT_DLL XINPUT_DLL_W
+#define XINPUT_DLL_A  "XINPUT1_3.dll"
+#define XINPUT_DLL_W L"XINPUT1_3.dll"
+
 #include "Utils/MemoryMgr.h"
 #include "PoolsBully.h"
 
@@ -440,7 +448,7 @@ namespace SEALeaksFix
 };
 
 DWORD WINAPI XInputThread(LPVOID lpParam) {
-
+	UNREFERENCED_PARAMETER(lpParam);
 	int32_t* fps_cap = (int32_t*)0x406190;
 	XINPUT_STATE xstate = { 0 };
 	bool CordHeld = false;
@@ -616,10 +624,42 @@ void InjectHooks()
 				sizeof(INIoption)  // Size of the data in bytes
 			);
 		}
+
+		if (const int INIoption = GetPrivateProfileIntW(L"SilentPatch", L"AutoEnableControllers", -1, wcModulePath); INIoption != -1)
+		{
+			if (INIoption == 1)
+			{
+				WCHAR configPath[MAX_PATH] = { 0 };
+				if (ExpandEnvironmentStringsW(L"%USERPROFILE%\\Documents\\Bully Scholarship Edition\\ControllerSettings", configPath, MAX_PATH))
+				{
+					HANDLE hFile = CreateFileW(configPath, FILE_READ_DATA, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+					if (hFile != INVALID_HANDLE_VALUE)
+					{
+						DWORD fs = GetFileSize(hFile, NULL);
+						if (fs == 236)
+						{
+							CHAR dataBuffer[236] = { 0 };
+							if (ReadFile(hFile, dataBuffer, fs, 0, NULL))
+							{
+								dataBuffer[0xA8] = 1;
+								HANDLE hFileNew = CreateFileW(configPath, FILE_WRITE_DATA, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
+								if (hFileNew != INVALID_HANDLE_VALUE)
+								{
+									WriteFile(hFileNew, dataBuffer, ARRAYSIZE(dataBuffer), 0, NULL);
+									CloseHandle(hFileNew);
+								}
+							}
+						}
+						CloseHandle(hFile);
+
+					}
+				}
+			}
+		}
 		// Revert code changes 60FPS EXE does, we don't need them anymore
 		Patch<int8_t>( 0x4061BE + 1, 0x4 );
 		Patch<uint8_t>( 0x4061C2, 0x73 );
-	}
+		}
 
 	// Remove FILE_FLAG_NO_BUFFERING from CdStreams
 	Patch<uint32_t>( 0x73ABEA + 6, FILE_FLAG_OVERLAPPED );
