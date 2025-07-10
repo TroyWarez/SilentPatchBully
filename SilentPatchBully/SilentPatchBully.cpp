@@ -687,17 +687,19 @@ void InjectHooks()
 				WCHAR configPath[MAX_PATH] = { 0 };
 				if (ExpandEnvironmentStringsW(L"%USERPROFILE%\\Documents\\Bully Scholarship Edition\\ControllerSettings", configPath, MAX_PATH))
 				{
-					HANDLE hFile = CreateFileW(configPath, FILE_READ_DATA, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+					HANDLE hFile = CreateFileW(configPath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
 					if (hFile != INVALID_HANDLE_VALUE)
 					{
 						DWORD fs = GetFileSize(hFile, NULL);
 						if (fs == 236)
 						{
-							CHAR dataBuffer[236] = { 0 };
+							UCHAR dataBuffer[236] = { 0 };
 							if (ReadFile(hFile, dataBuffer, fs, 0, NULL))
 							{
-								dataBuffer[0xA8] = (CHAR)INIoption;
-								HANDLE hFileNew = CreateFileW(configPath, FILE_WRITE_DATA, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
+								CloseHandle(hFile);
+								dataBuffer[0xA8] = (UCHAR)INIoption;
+								HANDLE hFileNew = CreateFileW(configPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
+								hFile = NULL;
 								if (hFileNew != INVALID_HANDLE_VALUE)
 								{
 									WriteFile(hFileNew, dataBuffer, ARRAYSIZE(dataBuffer), 0, NULL);
@@ -707,14 +709,15 @@ void InjectHooks()
 						}
 						else
 						{
-							HANDLE hFileNew = CreateFileW(configPath, FILE_WRITE_DATA, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
+							CloseHandle(hFile);
+							hFile = NULL;
+							HANDLE hFileNew = CreateFileW(configPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
 							if (hFileNew != INVALID_HANDLE_VALUE)
 							{
-								WriteFile(hFileNew, (INIoption > 0) ? EnabledControllerSettings : DisabledControllerSettings, ARRAYSIZE((INIoption > 0) ? EnabledControllerSettings : DisabledControllerSettings), 0, NULL);
+								WriteFile(hFileNew, (INIoption > 0) ? EnabledControllerSettings : DisabledControllerSettings, ARRAYSIZE(EnabledControllerSettings), 0, NULL);
 								CloseHandle(hFileNew);
 							}
 						}
-						CloseHandle(hFile);
 
 					}
 					else
@@ -722,7 +725,7 @@ void InjectHooks()
 						HANDLE hFileNew = CreateFileW(configPath, FILE_WRITE_DATA, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
 						if (hFileNew != INVALID_HANDLE_VALUE)
 						{
-							WriteFile(hFileNew, (INIoption > 0) ? EnabledControllerSettings : DisabledControllerSettings, ARRAYSIZE((INIoption > 0) ? EnabledControllerSettings : DisabledControllerSettings), 0, NULL);
+							WriteFile(hFileNew, (INIoption < 0) ? EnabledControllerSettings : DisabledControllerSettings, ARRAYSIZE(EnabledControllerSettings), 0, NULL);
 							CloseHandle(hFileNew);
 						}
 					}
