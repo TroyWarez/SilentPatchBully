@@ -4,7 +4,7 @@
 #include <sdkddkver.h>
 #include <windows.h>
 #include <debugapi.h>
-
+#include "DefaultControllerConfig.h"
 #include <Xinput.h>
 #undef XINPUT_DLL_A
 #undef XINPUT_DLL_W
@@ -20,6 +20,8 @@
 #include <cassert>
 
 #include <Shlwapi.h>
+
+HANDLE g_hShutdownEvent = NULL;
 
 #pragma comment(lib, "shlwapi.lib")
 
@@ -447,18 +449,21 @@ namespace SEALeaksFix
 	}
 };
 
-DWORD WINAPI XInputThread(LPVOID lpParam) {
+DWORD WINAPI InputThread(LPVOID lpParam) {
 	UNREFERENCED_PARAMETER(lpParam);
 	int32_t* fps_cap = (int32_t*)0x406190;
 	XINPUT_STATE xstate = { 0 };
 	bool CordHeld = false;
-	while (true)
+	bool KeyHeld = false;
+	while (WaitForSingleObject(g_hShutdownEvent, 100) == WAIT_TIMEOUT)
 	{
-		if (XInputGetState(0, &xstate) == ERROR_SUCCESS)
+		if (XInputGetState(0, &xstate) == ERROR_SUCCESS ||
+			(GetAsyncKeyState(VK_F11) & 0x01))
 		{
 			if (xstate.Gamepad.wButtons & XINPUT_GAMEPAD_BACK &&
 				xstate.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN &&
-				!CordHeld)
+				!CordHeld ||
+				(GetAsyncKeyState(VK_F11) & 0x01) && !KeyHeld)
 			{
 				wchar_t			wcModulePath[MAX_PATH];
 				GetModuleFileNameW(hDLLModule, wcModulePath, _countof(wcModulePath) - 3); // Minus max required space for extension
@@ -492,13 +497,24 @@ DWORD WINAPI XInputThread(LPVOID lpParam) {
 					}
 
 				}
-
-				CordHeld = true;
+				if ((GetAsyncKeyState(VK_F11) & 0x01))
+				{
+					KeyHeld = true;
+				}
+				if (xstate.Gamepad.wButtons & XINPUT_GAMEPAD_BACK &&
+					xstate.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
+				{
+					CordHeld = true;
+				}
 			}
-			else if (!(xstate.Gamepad.wButtons & XINPUT_GAMEPAD_BACK) ||
+			if (!(xstate.Gamepad.wButtons & XINPUT_GAMEPAD_BACK) ||
 				!(xstate.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN))
 			{
 				CordHeld = false;
+			}
+			if (!(GetAsyncKeyState(VK_F11) & 0x01))
+			{
+				KeyHeld = false;
 			}
 		}
 	}
@@ -586,13 +602,13 @@ void InjectHooks()
 			Patch<int32_t>( 0x40618F + 1, INIoption > 0 ? INIoption : INT_MAX );
 		}
 
-		if (const int INIoption = GetPrivateProfileIntW(L"SilentPatch", L"ResolutionWidth", -1, wcModulePath); INIoption != -1)
+		if (const int INIoption = GetPrivateProfileIntW(L"SilentPatch", L"AntiAliasing", -1, wcModulePath); INIoption != -1)
 		{
-			LPCWSTR valueNameResW = L"RESW";          // Name of the value
+			LPCWSTR valueNameResH = L"AA";          // Name of the value
 			RegSetKeyValueW(
 				HKEY_CURRENT_USER, // Root key handle
 				keyPath,           // Subkey path
-				valueNameResW,         // Value name
+				valueNameResH,         // Value name
 				REG_DWORD,         // Value type
 				&INIoption,        // Pointer to the data
 				sizeof(INIoption)  // Size of the data in bytes
@@ -612,9 +628,22 @@ void InjectHooks()
 			);
 		}
 
+		if (const int INIoption = GetPrivateProfileIntW(L"SilentPatch", L"ResolutionWidth", -1, wcModulePath); INIoption != -1)
+		{
+			LPCWSTR valueNameResW = L"RESW";          // Name of the value
+			RegSetKeyValueW(
+				HKEY_CURRENT_USER, // Root key handle
+				keyPath,           // Subkey path
+				valueNameResW,         // Value name
+				REG_DWORD,         // Value type
+				&INIoption,        // Pointer to the data
+				sizeof(INIoption)  // Size of the data in bytes
+			);
+		}
+
 		if (const int INIoption = GetPrivateProfileIntW(L"SilentPatch", L"ShadowLevel", -1, wcModulePath); INIoption != -1)
 		{
-			LPCWSTR valueNameShadow = L"VS";          // Name of the value
+			LPCWSTR valueNameShadow = L"SHA";          // Name of the value
 			RegSetKeyValueW(
 				HKEY_CURRENT_USER, // Root key handle
 				keyPath,           // Subkey path
@@ -625,9 +654,35 @@ void InjectHooks()
 			);
 		}
 
-		if (const int INIoption = GetPrivateProfileIntW(L"SilentPatch", L"AutoEnableControllers", -1, wcModulePath); INIoption != -1)
+		if (const int INIoption = GetPrivateProfileIntW(L"SilentPatch", L"Vsync", -1, wcModulePath); INIoption != -1)
 		{
-			if (INIoption == 1)
+			LPCWSTR valueNameResH = L"VS";          // Name of the value
+			RegSetKeyValueW(
+				HKEY_CURRENT_USER, // Root key handle
+				keyPath,           // Subkey path
+				valueNameResH,         // Value name
+				REG_DWORD,         // Value type
+				&INIoption,        // Pointer to the data
+				sizeof(INIoption)  // Size of the data in bytes
+			);
+		}
+
+		if (const int INIoption = GetPrivateProfileIntW(L"SilentPatch", L"Windowed", -1, wcModulePath); INIoption != -1)
+		{
+			LPCWSTR valueNameResH = L"WIN";          // Name of the value
+			RegSetKeyValueW(
+				HKEY_CURRENT_USER, // Root key handle
+				keyPath,           // Subkey path
+				valueNameResH,         // Value name
+				REG_DWORD,         // Value type
+				&INIoption,        // Pointer to the data
+				sizeof(INIoption)  // Size of the data in bytes
+			);
+		}
+
+		if (const int INIoption = GetPrivateProfileIntW(L"SilentPatch", L"EnableControllers", -1, wcModulePath); INIoption != -1)
+		{
+			if (INIoption == 1 || INIoption == 0)
 			{
 				WCHAR configPath[MAX_PATH] = { 0 };
 				if (ExpandEnvironmentStringsW(L"%USERPROFILE%\\Documents\\Bully Scholarship Edition\\ControllerSettings", configPath, MAX_PATH))
@@ -641,7 +696,7 @@ void InjectHooks()
 							CHAR dataBuffer[236] = { 0 };
 							if (ReadFile(hFile, dataBuffer, fs, 0, NULL))
 							{
-								dataBuffer[0xA8] = 1;
+								dataBuffer[0xA8] = (CHAR)INIoption;
 								HANDLE hFileNew = CreateFileW(configPath, FILE_WRITE_DATA, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
 								if (hFileNew != INVALID_HANDLE_VALUE)
 								{
@@ -650,8 +705,26 @@ void InjectHooks()
 								}
 							}
 						}
+						else
+						{
+							HANDLE hFileNew = CreateFileW(configPath, FILE_WRITE_DATA, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
+							if (hFileNew != INVALID_HANDLE_VALUE)
+							{
+								WriteFile(hFileNew, ControllerSettings, ARRAYSIZE(ControllerSettings), 0, NULL);
+								CloseHandle(hFileNew);
+							}
+						}
 						CloseHandle(hFile);
 
+					}
+					else
+					{
+						HANDLE hFileNew = CreateFileW(configPath, FILE_WRITE_DATA, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
+						if (hFileNew != INVALID_HANDLE_VALUE)
+						{
+							WriteFile(hFileNew, ControllerSettings, ARRAYSIZE(ControllerSettings), 0, NULL);
+							CloseHandle(hFileNew);
+						}
 					}
 				}
 			}
@@ -1094,11 +1167,11 @@ void InjectHooks()
 	HANDLE hThread;      // Handle to the newly created thread
 	DWORD dwThreadId;    // ID of the newly created thread
 
-	// Create a new thread that will execute XInputThread.
+	// Create a new thread that will execute InputThread.
 	hThread = CreateThread(
 		nullptr,             // Default security attributes (can be NULL)
 		0,                   // Default stack size (0 means use default size)
-		XInputThread,    // Pointer to the thread function
+		InputThread,    // Pointer to the thread function
 		NULL,//(LPVOID)(*(int32_t *)0x40618F + 1),             // Parameter to pass to the thread function (can be NULL)
 		0,                   // Default creation flags (0 means run immediately)
 		&dwThreadId          // Pointer to a DWORD to receive the thread ID
@@ -1198,8 +1271,15 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 
 	if ( fdwReason == DLL_PROCESS_ATTACH )
 	{
-
+		if (g_hShutdownEvent == NULL)
+		{
+			g_hShutdownEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+		}
 		hDLLModule = hinstDLL;
+	}
+	if (fdwReason == DLL_PROCESS_DETACH)
+	{
+		SetEvent(g_hShutdownEvent); // Signal the event
 	}
 	return TRUE;
 }
