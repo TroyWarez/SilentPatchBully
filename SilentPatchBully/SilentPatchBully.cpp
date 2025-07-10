@@ -710,7 +710,7 @@ void InjectHooks()
 							HANDLE hFileNew = CreateFileW(configPath, FILE_WRITE_DATA, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
 							if (hFileNew != INVALID_HANDLE_VALUE)
 							{
-								WriteFile(hFileNew, ControllerSettings, ARRAYSIZE(ControllerSettings), 0, NULL);
+								WriteFile(hFileNew, (INIoption > 0) ? EnabledControllerSettings : DisabledControllerSettings, ARRAYSIZE((INIoption > 0) ? EnabledControllerSettings : DisabledControllerSettings), 0, NULL);
 								CloseHandle(hFileNew);
 							}
 						}
@@ -722,7 +722,7 @@ void InjectHooks()
 						HANDLE hFileNew = CreateFileW(configPath, FILE_WRITE_DATA, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
 						if (hFileNew != INVALID_HANDLE_VALUE)
 						{
-							WriteFile(hFileNew, ControllerSettings, ARRAYSIZE(ControllerSettings), 0, NULL);
+							WriteFile(hFileNew, (INIoption > 0) ? EnabledControllerSettings : DisabledControllerSettings, ARRAYSIZE((INIoption > 0) ? EnabledControllerSettings : DisabledControllerSettings), 0, NULL);
 							CloseHandle(hFileNew);
 						}
 					}
